@@ -26,8 +26,7 @@ RUN echo "Installing dependencies..." && \
 	libviennacl-dev \
 	libcanberra-gtk-module \
 	libopencv-dev && \
-	python3 -m pip install \
-	pip install --upgrade pip \
+	python3 -m pip install pip== 22.1.2 \
 	numpy \
 	protobuf \
 	opencv-python
