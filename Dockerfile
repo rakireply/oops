@@ -1,6 +1,7 @@
 FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
 
 RUN echo "Installing dependencies..." && \
+	apt update \
         apt-get install -y --no-install-recommends \
 	build-essential \
 	apt-get install cmake \
