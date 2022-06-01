@@ -21,12 +21,14 @@ RUN echo "Installing dependencies..." && \
 	python3-setuptools \
 	python3-dev \
 	python3-pip \
+	pip install --upgrade pip \
 	opencl-headers \
 	ocl-icd-opencl-dev \
 	libviennacl-dev \
 	libcanberra-gtk-module \
 	libopencv-dev && \
 	python3 -m pip install pip==22.1.2 \
+	pip install --upgrade pip \
 	numpy \
 	protobuf \
 	opencv-python
