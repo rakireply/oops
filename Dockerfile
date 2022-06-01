@@ -2,9 +2,8 @@ FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
 
 RUN echo "Installing dependencies..." && \
         apt-get update \
+	apt-get upgrade -y \
 	apt-get install -y python3-pip \
-	apt-get -y --no-install-recommends update && \
-	apt-get -y --no-install-recommends upgrade && \
 	apt-get install -y --no-install-recommends \
 	build-essential \
 	cmake \
