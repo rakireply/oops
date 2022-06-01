@@ -1,46 +1,124 @@
-# inspired by https://gist.github.com/sberryman/6770363f02336af82cb175a83b79de33
-FROM bvlc/caffe:gpu
+# start with the nvidia container for cuda 8 with cudnn 5
+# ensure `/etc/docker/daemon.json` file is
+# modified to use nvidia runtime by default
+FROM nvidia/cuda:8.0-cudnn5-devel
 
-RUN apt-get update -y && apt-get --assume-yes install \
-    build-essential unzip \
-    # General dependencies
-    libatlas-base-dev libprotobuf-dev libleveldb-dev libsnappy-dev libhdf5-serial-dev protobuf-compiler \
-    libboost-all-dev \
-    # Remaining dependencies, 14.04
-    libgflags-dev libgoogle-glog-dev liblmdb-dev \
-    # Python libs
-    libopencv-dev python-opencv python-pip python-dev \
+# install dependencies
+RUN apt-get update && \
+  apt-get install -y \
+    build-essential \
     cmake \
-    libeigen3-dev libviennacl-dev \
-    libnccl-dev \
-    doxygen
+    git \
+    pkg-config \
+    libjpeg8-dev \
+    libtiff5-dev \
+    libjasper-dev \
+    libpng12-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libx264-dev \
+    libx265-dev \
+    libatlas-base-dev \
+    gfortran \
+    python3.5-dev \
+    libboost-all-dev \
+    libgflags-dev \
+    libgoogle-glog-dev \
+    libprotobuf-lite9v5 \
+    libprotobuf-dev \
+    protobuf-compiler \
+    wget \
+    unzip \
+    python3-pip \
+    libhdf5-serial-dev \
+    libleveldb-dev \
+    liblmdb-dev \
+    libsnappy-dev \
+    yasm && \
+  rm -rf /var/lib/apt/lists/*
 
-RUN cp -ruax /opt/caffe/build/include/caffe/proto/ /opt/caffe/include/caffe
-RUN pip install --upgrade numpy protobuf opencv-python
+# upgrade pip(3)
+RUN pip3 install --upgrade pip && \
+  pip3 install numpy scipy
 
-# download openpose
+# opencv (3.2 specifically)
+# ensure dnn is NOT enabled, this will cause problems!
+RUN cd ~ && \
+    export OPENCV_CHECKSUM=7a7d2eb8cf617f58d610d856e531f3d92b89bc42 && \
+    export OPENCV_CONTRIB_CHECKSUM=9f34aef18d05cf7136d6b251c794cfdfcdb2e78d && \
+    wget -O opencv.zip https://github.com/opencv/opencv/archive/3.2.0.zip && \
+    wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/3.2.0.zip && \
+    echo "${OPENCV_CHECKSUM}  opencv.zip" | sha1sum -c && \
+    echo "${OPENCV_CONTRIB_CHECKSUM}  opencv_contrib.zip" | sha1sum -c && \
+    unzip opencv.zip && \
+    unzip opencv_contrib.zip && \
+    rm -f opencv.zip && \
+    rm -f opencv_contrib.zip
+
+RUN cd ~/opencv-3.2.0/ && \
+    mkdir build && \
+    cd build && \
+    cmake -D CMAKE_BUILD_TYPE=RELEASE \
+      -D CMAKE_INSTALL_PREFIX=/usr/local \
+      -D INSTALL_PYTHON_EXAMPLES=OFF \
+      -D INSTALL_C_EXAMPLES=OFF \
+      -D BUILD_opencv_dnn=OFF \
+      -D OPENCV_EXTRA_MODULES_PATH=~/opencv_contrib-3.2.0/modules \
+      -D PYTHON3_EXECUTABLE=/usr/bin/python3 \
+      -D BUILD_opencv_python2=OFF \
+      -D BUILD_opencv_python3=ON \
+      -D BUILD_EXAMPLES=OFF .. && \
+    make -j"$(nproc)" && \
+    make install -j"$(nproc)" && \
+    ldconfig && \
+    cd ~ && \
+    rm -rf opencv-3.2.0 && \
+    rm -rf opencv_contrib-3.2.0
+
 RUN cd /opt && \
-    wget -O openpose.zip https://github.com/CMU-Perceptual-Computing-Lab/openpose/archive/v1.4.0.zip && \
+    export OPENPOSE_CHECKSUM=9f34aef18d05cf7136d6b251c794cfdfcdb2e78d && \
+    wget -O openpose.zip https://github.com/CMU-Perceptual-Computing-Lab/openpose/archive/v1.2.1.zip && \
+    && echo "${OPENCV_CHECKSUM}  opencv.zip" | sha1sum -c && \
     unzip openpose.zip && \
     rm -f openpose.zip && \
-    mv openpose-1.4.0 openpose-master
+    mv openpose-1.2.1 openpose-master
+
+ENV CAFFE_ROOT=/opt/openpose-master/3rdparty/caffe
+
+# caffe
+RUN cd /opt/openpose-master && \
+    rm -rf 3rdparty/caffe && \
+    git clone --depth 1 https://github.com/CMU-Perceptual-Computing-Lab/caffe.git 3rdparty/caffe && \
+    cd 3rdparty/caffe/ && \
+    cp Makefile.config.Ubuntu16_cuda8.example Makefile.config && \
+    sed -i '/\# OPENCV_VERSION := 3/c\OPENCV_VERSION := 3' Makefile.config && \
+    sed -i '/\# PYTHON_LIBRARIES := boost_python3 python3.5m/c\PYTHON_LIBRARIES := boost_python3 python3.5m' Makefile.config && \
+    sed -i '/\# PYTHON_INCLUDE := \/usr\/include\/python3.5m \\/c\PYTHON_INCLUDE := \/usr\/include\/python3.5m \\' Makefile.config && \
+    sed -i '/\#                 \/usr\/lib\/python3.5\/dist-packages\/numpy\/core\/include/c\                  \/usr\/local\/lib\/python3.5\/dist-packages\/numpy\/core\/include' Makefile.config && \
+    cd python && \
+    for req in $(cat requirements.txt) pydot; do pip install $req; done && \
+    cd .. && \
+    ln -s /usr/lib/x86_64-linux-gnu/libboost_python-py35.so /usr/lib/x86_64-linux-gnu/libboost_python3.so && \
+    make all -j"$(nproc)"
+
+ENV PYCAFFE_ROOT $CAFFE_ROOT/python
+ENV PYTHONPATH $PYCAFFE_ROOT:$PYTHONPATH
+ENV PATH $CAFFE_ROOT/build/tools:$PYCAFFE_ROOT:$PATH
+RUN echo "$CAFFE_ROOT/build/lib" >> /etc/ld.so.conf.d/caffe.conf && ldconfig
+
+# and distribute
+RUN cd /opt/openpose-master/3rdparty/caffe/ && \
+    make distribute -j"$(nproc)"
 
 # compile openpose
 ENV OPENPOSE_ROOT /opt/openpose-master
 RUN cd /opt/openpose-master && \
-    mkdir -p build && cd build && \
-    cmake \
-      -DCMAKE_BUILD_TYPE="Release" \
-      -DBUILD_CAFFE=OFF \
-      -DBUILD_EXAMPLES=ON \
-      -DBUILD_DOCS=ON \
-      -DBUILD_SHARED_LIBS=ON \
-      -DDOWNLOAD_BODY_25_MODEL=ON \
-      -DDOWNLOAD_BODY_COCO_MODEL=ON \
-      -DDOWNLOAD_BODY_MPI_MODEL=ON \
-      -DDOWNLOAD_HAND_MODEL=ON \
-      -DWITH_3D_RENDERER:BOOL=OFF \
-      -DCaffe_INCLUDE_DIRS="/opt/caffe/include" \
-      -DCaffe_LIBS="/opt/caffe/build/lib/libcaffe.so" \
-      -DBUILD_PYTHON=ON ../ && \
+    cp ubuntu/Makefile.config.Ubuntu16_cuda8.example Makefile.config && \
+    sed -i '/\# OPENCV_VERSION := 3/c\OPENCV_VERSION := 3' Makefile.config && \
     make all -j"$(nproc)"
+
+# your app goes here...
+# sample
+# CMD ["/opt/openpose-master/build/examples/openpose/openpose.bin", "--keypoint_scale 3"]
