@@ -4,6 +4,7 @@ RUN echo "Installing dependencies..." && \
 	apt-get -y --no-install-recommends update && \
 	apt-get -y --no-install-recommends upgrade && \
 	apt-get install -y --no-install-recommends \
+	apt-get install -y python3-pip \
 	build-essential \
 	cmake \
 	git \
